@@ -17,7 +17,7 @@ sysctl_overwrite:
   net.ipv4.ip_forward: 1
 
 # — VPS email credentials pulled from environment —
-msmtp_host:      "{{ lookup('env','MSMTP_HOST')      | default('smtp.gmail.com') }}"
-msmtp_port:      "{{ lookup('env','MSMTP_PORT')      | default(587) }}"
-msmtp_user:      "{{ lookup('env','MSMTP_USER')      | default('your.email@gmail.com') }}"
-msmtp_password:  "{{ lookup('env','MSMTP_PASSWORD')  }}"
+msmtp_host:      "{{ lookup('env','SMTP_HOST')      | default('smtp.gmail.com') }}"
+msmtp_port:      "{{ lookup('env','SMTP_PORT')      | default(587) }}"
+msmtp_user:      "{{ lookup('env','SMTP_USER')      | default('your.email@gmail.com') }}"
+msmtp_password:  "{{ lookup('env','SMTP_PASSWORD')  }}"
