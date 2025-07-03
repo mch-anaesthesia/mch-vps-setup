@@ -1,0 +1,21 @@
+services:
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    environment:  # Pass variables from the base compose
+      CADDY_EMAIL: "${CADDY_EMAIL}"
+      DOMAIN: "${DOMAIN}"
+    ports:
+      - "80:80"    # HTTP
+      - "443:443"  # HTTPS
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./customisation:/customisation:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+volumes:
+  caddy_data:
+  caddy_config:

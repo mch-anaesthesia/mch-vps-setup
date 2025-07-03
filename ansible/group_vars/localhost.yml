@@ -1,0 +1,23 @@
+---
+# — OS Hardening defaults —
+os_desktop_enable: false
+os_auth_pw_max_age: 90
+os_auth_pw_min_age: 7
+os_auth_retries: 3
+os_auth_lockout_time: 600
+
+# — SSH Hardening defaults —
+ssh_permit_root_login: 'no'
+ssh_password_authentication: false
+ssh_client_alive_interval: 300
+ssh_client_alive_count: 2
+
+# — Docker networking preserved —
+sysctl_overwrite:
+  net.ipv4.ip_forward: 1
+
+# — VPS email credentials pulled from environment —
+msmtp_host:      "{{ lookup('env','MSMTP_HOST')      | default('smtp.gmail.com') }}"
+msmtp_port:      "{{ lookup('env','MSMTP_PORT')      | default(587) }}"
+msmtp_user:      "{{ lookup('env','MSMTP_USER')      | default('your.email@gmail.com') }}"
+msmtp_password:  "{{ lookup('env','MSMTP_PASSWORD')  }}"

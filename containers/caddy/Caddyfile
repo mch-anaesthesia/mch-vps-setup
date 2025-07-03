@@ -1,0 +1,18 @@
+{
+	email {$CADDY_EMAIL}
+}
+
+{$DOMAIN} {
+	# 1) Match requests for /static/media/cover.<hash>.jpg
+	@cover path_regexp cover ^/static/media/cover\.[a-f0-9]{16,}\.jpg$
+
+	# 2) When matched, rewrite to our local file and serve it directly
+	handle @cover {
+		root * /
+		rewrite * /customisation/cover.jpg
+		file_server
+	}
+
+	# 3) Other requests go to Planka
+	reverse_proxy planka:1337
+}

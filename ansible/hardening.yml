@@ -1,0 +1,197 @@
+---
+- name: Bootstrap base services and mail relay
+  hosts: localhost
+  become: true
+  vars_files:
+    - "{{ playbook_dir }}/group_vars/localhost.yml"
+
+  tasks:
+    # ─── Update apt cache and upgrade ──────────────────────────────────────────────────────────
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Upgrade all installed packages to the latest version
+      apt:
+        upgrade: dist
+        update_cache: yes
+    
+    # ─── Setup automatic updates ──────────────────────────────────────────────────────────
+    - name: Install unattended-upgrades
+      apt:
+        name: unattended-upgrades
+        state: present
+        update_cache: yes
+
+    - name: Enable automatic security updates
+      copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade   "1";
+          APT::Periodic::AutocleanInterval    "7";
+        mode: '0644'
+
+    # ─── 1. Time sync (Chrony) ────────────────────────────────────────────────────
+    - name: Install Chrony
+      apt:
+        name: chrony
+        state: present
+
+    - name: Ensure Chrony is running & enabled
+      service:
+        name: chrony
+        state: started
+        enabled: yes
+
+    # ─── 2. Host firewall (UFW) ────────────────────────────────────────────────────
+    - name: Install UFW
+      apt:
+        name: ufw
+        state: present
+
+    - name: Deny all incoming by default
+      ufw:
+        state: enabled
+        direction: incoming
+        policy: deny
+
+    - name: Allow all outgoing by default
+      ufw:
+        state: enabled
+        direction: outgoing
+        policy: allow
+
+    - name: Allow SSH
+      ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: Allow HTTP
+      ufw:
+        rule: allow
+        port: 80
+        proto: tcp
+
+    - name: Allow HTTPS
+      ufw:
+        rule: allow
+        port: 443
+        proto: tcp
+
+    # ─── 3. File-integrity monitoring (auditd) ────────────────────────────────────
+    - name: Install auditd
+      apt:
+        name: auditd
+        state: present
+
+    - name: Ensure auditd is running & enabled
+      service:
+        name: auditd
+        state: started
+        enabled: yes
+
+    # ─── 4. Rootkit scanning (rkhunter) ───────────────────────────────────────────
+    - name: Install rkhunter
+      apt:
+        name: rkhunter
+        state: present
+        update_cache: yes
+
+    - name: Skip remote rkhunter updates (disabled upstream)
+      debug:
+        msg: |
+          Debian deliberately ships rkhunter with WEB_CMD="/bin/false" to
+          disable insecure mirror updates.  We rely on `apt upgrade rkhunter`
+          for signature updates rather than `rkhunter --update`.
+    
+    - name: Remove deprecated SCRIPTWHITELIST entries from rkhunter.conf
+      lineinfile:
+        path: /etc/rkhunter.conf
+        regexp: '^SCRIPTWHITELIST=.*\/usr\/bin\/(egrep|fgrep)'
+        state: absent
+
+    - name: Initialize rkhunter property database
+      command: rkhunter --propupd
+
+    # ─── 5. Log summaries (Logwatch) ──────────────────────────────────────────────
+    - name: Install logwatch
+      apt:
+        name: logwatch
+        state: present
+
+    - name: Schedule daily logwatch report
+      cron:
+        name: "Run logwatch"
+        job: "/usr/sbin/logwatch --output mail --mailto root"
+        minute: 0
+        hour: 3
+
+    # ─── 6. Resource monitoring (Prometheus Node Exporter) ────────────────────────
+    - name: Install prometheus-node-exporter
+      apt:
+        name: prometheus-node-exporter
+        state: present
+
+    - name: Ensure node-exporter is running & enabled
+      service:
+        name: prometheus-node-exporter
+        state: started
+        enabled: yes
+
+    # ─── 7. Mail relay via msmtp ──────────────────────────────────────────────────
+    - name: Install msmtp-mta & mailutils
+      apt:
+        name:
+          - msmtp-mta
+          - mailutils
+        state: present
+        update_cache: yes
+
+    - name: Deploy /etc/msmtprc
+      copy:
+        dest: /etc/msmtprc
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          defaults
+          auth           on
+          tls            on
+          tls_trust_file /etc/ssl/certs/ca-certificates.crt
+          logfile        /var/log/msmtp.log
+
+          account        default
+          host           {{ msmtp_host }}
+          port           {{ msmtp_port }}
+          from           {{ msmtp_user }}
+          user           {{ msmtp_user }}
+          password       {{ msmtp_password }}
+
+          account default : default
+
+    - name: Ensure root mail is forwarded
+      lineinfile:
+        dest: /etc/aliases
+        regexp: '^root:'
+        line: "root: {{ msmtp_user }}"
+        create: yes
+
+    - name: Apply newaliases
+      command: newaliases
+
+- name: Secure VPS with Docker support
+  hosts: localhost
+  become: true
+
+  pre_tasks:
+    - name: Ensure all SSH host keys are present
+      command: ssh-keygen -A
+
+  collections:
+    - devsec.hardening
+
+  roles:
+    - os_hardening
+    - ssh_hardening
