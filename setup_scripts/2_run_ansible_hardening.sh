@@ -10,7 +10,8 @@ systemctl restart ssh
 echo "[+] Installing Docker"
 apt update
 apt install -y docker.io docker-compose
-usermod -aG docker "$NEW_USER"
+USER_TO_ADD="${SUDO_USER:-$(whoami)}"
+usermod -aG docker "$USER_TO_ADD"
 
 echo "[+] Installing Ansible & Git"
 apt update
