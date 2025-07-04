@@ -83,7 +83,7 @@ for vol in public/favicons public/user-avatars public/background-images private/
   docker run --rm \
     --volumes-from "$PLANKA_CTN" \
     -v "$RESTORE_ROOT":/backup ubuntu \
-    bash -c "rm -rf /app/$vol && mkdir -p /app/$vol && cp -a /backup/$vol/. /app/$vol/"
+    bash -c "rm -rf /app/$vol/* && cp -a /backup/$vol/. /app/$vol/"
 done
 
 # Cleanup temporary files
