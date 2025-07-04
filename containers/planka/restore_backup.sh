@@ -37,14 +37,12 @@ SNAP_ID="${1:-}"
 if [[ -z "$SNAP_ID" ]]; then
   echo "Available snapshots tagged '$RESTIC_TAG':"
   echo
-  # Print header then list ID and date
-  restic snapshots --tag "$RESTIC_TAG" --no-lock | tail -n +2 | awk '{printf "%s\t%s %s %s %s\n", \$1, \$2, \$3, \$4, \$5}'
+  restic snapshots --tag "$RESTIC_TAG" --no-lock \
+    | tail -n +2 \
+    | awk '{ printf "%s\t%s %s %s %s\n", $1, $2, $3, $4, $5 }'
   echo
   read -erp "Enter the snapshot ID to restore: " SNAP_ID
-  if [[ -z "$SNAP_ID" ]]; then
-    echo "✗ ERROR: No snapshot ID entered. Aborting." >&2
-    exit 1
-  fi
+  …
 fi
 
 echo "[+] Restoring snapshot: $SNAP_ID"
