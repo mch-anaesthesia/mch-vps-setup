@@ -13,13 +13,18 @@ install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
 
-# Add the repository to Apt sources:
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo \"${UBUNTU_CODENAME:-$VERSION_CODENAME}\") stable" | \
-  tee /etc/apt/sources.list.d/docker.list > /dev/null
-apt-get update
+# 2) Capture variables
+ARCH="$(dpkg --print-architecture)"         # e.g. amd64
+CODENAME="$(lsb_release -cs)"               # e.g. jammy
 
+# 3) Drop in the Docker repo with clean expansion
+cat <<EOF | tee /etc/apt/sources.list.d/docker.list >/dev/null
+deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.asc] \
+https://download.docker.com/linux/ubuntu \
+${CODENAME} stable
+EOF
+
+apt-get update
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 # Ensure the 'docker' group exists (won't error if it already does)
