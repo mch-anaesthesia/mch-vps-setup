@@ -6,6 +6,14 @@ for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker c
 
 echo "[+] Installing Docker Engine & Compose plugin"
 
+# 1) Install prerequisites
+apt-get update
+apt-get install -y \
+  ca-certificates \
+  curl \
+  lsb-release \
+  gnupg
+
 # Add Docker's official GPG key:
 apt-get update
 apt-get install -y ca-certificates curl
