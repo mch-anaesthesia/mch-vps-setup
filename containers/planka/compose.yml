@@ -100,6 +100,7 @@ services:
       - SMTP_SECURE=${SMTP_SECURE}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM=${SMTP_FROM}
       # Optionally store in secrets - then SMTP_PASSWORD should not be set
       # - SMTP_PASSWORD__FILE=/run/secrets/smtp_password
       # - SMTP_FROM="Demo Demo" <demo@demo.demo>
