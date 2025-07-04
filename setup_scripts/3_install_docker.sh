@@ -16,7 +16,11 @@ apt-get install -y \
 
 # Add Docker's official GPG key:
 apt-get update
-apt-get install -y ca-certificates curl
+apt-get install -y \
+  ca-certificates \
+  curl \
+  lsb-release \
+  gnupg
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
@@ -43,3 +47,9 @@ fi
 # Add your user to it so they can run Docker without sudo
 USER_TO_ADD="${SUDO_USER:-$(whoami)}"
 usermod -aG docker "$USER_TO_ADD"
+
+# 8) Enable & start Docker’s socket + service
+echo "[+] Reloading systemd, enabling & starting docker.socket + docker.service"
+systemctl daemon-reload
+systemctl enable --now docker.socket
+systemctl enable --now docker.service

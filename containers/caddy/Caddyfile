@@ -3,8 +3,8 @@
 }
 
 {$DOMAIN} {
-	# 1) Match requests for /static/media/cover.<hash>.jpg
-	@cover path_regexp cover ^/static/media/cover\.[a-f0-9]{16,}\.jpg$
+	# 1) Match requests for /assets/cover-<hash>.jpg
+	@cover path_regexp cover ^/assets/cover-[a-f0-9]{16,}\.jpg$
 
 	# 2) When matched, rewrite to our local file and serve it directly
 	handle @cover {
