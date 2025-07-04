@@ -30,7 +30,10 @@ for var in B2_ACCOUNT_ID B2_ACCOUNT_KEY RESTIC_REPOSITORY RESTIC_PASSWORD; do
 done
 
 # Ensure restic is installed
-command -v restic >/dev/null || { echo "✗ ERROR: restic not installed." >&2; exit 1; }
+if ! command -v restic >/dev/null; then
+  echo "✗ ERROR: restic not installed." >&2
+  exit 1
+fi
 
 # If no snapshot given, list and prompt
 SNAP_ID="${1:-}"
@@ -49,10 +52,21 @@ if [[ -z "$SNAP_ID" ]]; then
 fi
 
 echo "[+] Restoring snapshot: $SNAP_ID"
-TMPDIR=$(mktemp -d /tmp/planka-restore-$SNAP_ID.XXXX)
+TMPDIR="$(mktemp -d /tmp/planka-restore-${SNAP_ID}.XXXX)"
 
 # Restore the backup
 restic restore "$SNAP_ID" --target "$TMPDIR"
+
+# Determine actual restore root (restic nests files under TMPDIR/<original-tempdir>)
+if [[ -f "$TMPDIR/postgres.sql" ]]; then
+  RESTORE_ROOT="$TMPDIR"
+else
+  RESTORE_ROOT="$(find "$TMPDIR" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+  if [[ -z "$RESTORE_ROOT" ]]; then
+    echo "✗ ERROR: Restored data directory not found under $TMPDIR" >&2
+    exit 1
+  fi
+fi
 
 # Restore Postgres database
 echo "[+] Importing database into container '$POSTGRES_CTN'"
@@ -60,14 +74,16 @@ if ! docker ps --format '{{.Names}}' | grep -qx "$POSTGRES_CTN"; then
   echo "✗ ERROR: Postgres container '$POSTGRES_CTN' is not running." >&2
   exit 1
 fi
-cat "$TMPDIR/postgres.sql" | docker exec -i "$POSTGRES_CTN" psql -U postgres
+docker exec -i "$POSTGRES_CTN" psql -U postgres < "$RESTORE_ROOT/postgres.sql"
 
 # Restore Planka asset volumes
 echo "[+] Restoring Planka asset volumes into '$PLANKA_CTN'"
 for vol in public/favicons public/user-avatars public/background-images private/attachments; do
   echo "    • $vol"
-  docker run --rm --volumes-from "$PLANKA_CTN" -v "$TMPDIR":/backup ubuntu bash -c \
-    "rm -rf /app/$vol && mkdir -p /app/$vol && cp -a /backup/$vol/. /app/$vol/"
+  docker run --rm \
+    --volumes-from "$PLANKA_CTN" \
+    -v "$RESTORE_ROOT":/backup ubuntu \
+    bash -c "rm -rf /app/$vol && mkdir -p /app/$vol && cp -a /backup/$vol/. /app/$vol/"
 done
 
 # Cleanup temporary files
