@@ -108,8 +108,11 @@ for vol in public/favicons public/user-avatars public/background-images private/
     cp -a "/app/${vol}" "/backup/${vol}"
 done
 
-echo "[+] Restic backup"
-restic backup "${tmpdir}" --tag planka --tag "${ts}"
+echo "[+] Restic backup (contents only)"
+(
+  cd "${tmpdir}"
+  restic backup . --tag planka --tag "${ts}"
+)
 
 echo "[+] Pruning snapshots"
 restic forget --prune \
