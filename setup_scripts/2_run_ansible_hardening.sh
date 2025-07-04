@@ -7,12 +7,6 @@ sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
 sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
 systemctl restart ssh
 
-echo "[+] Installing Docker"
-apt update
-apt install -y docker.io docker-compose
-USER_TO_ADD="${SUDO_USER:-$(whoami)}"
-usermod -aG docker "$USER_TO_ADD"
-
 echo "[+] Installing Ansible & Git"
 apt update
 apt install -y software-properties-common
