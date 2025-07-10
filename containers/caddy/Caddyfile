@@ -2,9 +2,6 @@
     # Global options
     email   {$CADDY_EMAIL}
 
-    # Redirect all HTTP → HTTPS
-    auto_https on
-
     # Only TLS 1.2+ and safe curves
     tls {
         protocols tls1.3 tls1.2
