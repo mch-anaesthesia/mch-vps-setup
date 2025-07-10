@@ -2,7 +2,7 @@
 	email {$CADDY_EMAIL}
 }
 
-{$DOMAIN} {
+planka.{$DOMAIN} {
 	# 1) Match requests for /assets/cover-<hash>.jpg
     @cover path_regexp cover ^/assets/cover-[A-Za-z0-9-]+\.jpg$
 
