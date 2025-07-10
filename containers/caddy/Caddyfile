@@ -2,15 +2,18 @@
 	# Global options
 	email {$CADDY_EMAIL}
 
-	# Global access log → file (must mount /var/log/caddy in Docker)
+	# Caddy’s own engine logs (errors, start/stop) → file + stderr
 	log {
 		output file /var/log/caddy/caddy.log
 		output stderr
-		level ERROR # or INFO, as you prefer
+		level ERROR
 	}
 }
 
-(planka_common) {
+# ----------------------
+# 1) Shared security snippet
+# ----------------------
+(security_common) {
 	# Security headers
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
@@ -27,43 +30,48 @@
 	}
 }
 
-planka.{$DOMAIN} {
-	import planka_common
+# ----------------------
+# 2) Planka “app” snippet
+# ----------------------
+(planka_site) {
+	import security_common
 
+	# a) Access logs → stdout (for docker logs) + file
 	log docker_stdout_log {
 		output stdout
 		format console
 		level INFO
 	}
-
 	log file_log {
 		output file /var/log/caddy/access.log
 		format json
 		level INFO
 	}
 
-	# Serve a single static cover image for any /assets/cover-*.jpg
-	@cover path_regexp cover ^/assets/cover-[A-Za-z0-9-]+\.jpg$
+	# b) Cover rewrite
+	@cover {
+		host planka.{$DOMAIN}
+		path_regexp cover ^/assets/cover-[A-Za-z0-9-]+\.jpg$
+	}
 	handle @cover {
 		root * /
-		rewrite * /customisation/cover.jpg
+		rewrite * /customisation/cover-mch.jpg
 		file_server
 	}
 
-	# Real-time (WS/SSE) upgrades should stay open forever
+	# c) WebSocket / SSE proxy (no timeout)
 	@ws {
 		header Connection *Upgrade*
 		header Upgrade websocket
 	}
 	handle @ws {
 		reverse_proxy planka:1337 {
-			# disable forced stream timeout (default is none)
 			stream_timeout 0
 			stream_close_delay 0
 		}
 	}
 
-	# Everything else → your API/static backend
+	# d) Fallback: all other traffic → backend
 	handle {
 		reverse_proxy planka:1337 {
 			transport http {
@@ -74,4 +82,11 @@ planka.{$DOMAIN} {
 			}
 		}
 	}
+}
+
+# ----------------------
+# 3) Bind to hostname
+# ----------------------
+planka.{$DOMAIN} {
+	import planka_site
 }
