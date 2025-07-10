@@ -17,30 +17,10 @@
 	debug
 }
 
-(planka_common) {
-	# Security headers
-	header {
-		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-		X-Frame-Options "DENY"
-		X-Content-Type-Options "nosniff"
-		X-XSS-Protection "1; mode=block"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "geolocation=(), microphone=()"
-	}
-
+planka.{$DOMAIN} {
 	# Cap request bodies
 	request_body {
 		max_size 10MB
-	}
-}
-
-planka.{$DOMAIN} {
-	import planka_common
-
-	tls {
-		protocols tls1.2 tls1.3
-		curves x25519 secp256r1
-		alpn http/1.1 h2
 	}
 
 	# Serve a single static cover image for any /assets/cover-*.jpg
