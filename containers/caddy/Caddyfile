@@ -6,7 +6,7 @@
 	log {
 		output file /var/log/caddy/caddy.log
 		output stderr
-        level ERROR      # or INFO, as you prefer
+		level ERROR # or INFO, as you prefer
 	}
 }
 
@@ -30,11 +30,16 @@
 planka.{$DOMAIN} {
 	import planka_common
 
-	log {
-		output stdout # streams each HTTP request to docker logs
-		output file /var/log/caddy/access.log
+	log docker_stdout_log {
+		output stdout
 		format console
-        level  INFO
+		level INFO
+	}
+
+	log file_log {
+		output file /var/log/caddy/access.log
+		format json
+		level INFO
 	}
 
 	# Serve a single static cover image for any /assets/cover-*.jpg
@@ -69,5 +74,4 @@ planka.{$DOMAIN} {
 			}
 		}
 	}
-
 }
