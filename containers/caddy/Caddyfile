@@ -1,78 +1,78 @@
 {
-    # Global options
-    email   {$CADDY_EMAIL}
+	# Global options
+	email {$CADDY_EMAIL}
 
-    # Global access log → file (must mount /var/log/caddy in Docker)
-    log {
-        output file /var/log/caddy/access.log {
-            roll_size      50MiB
-            roll_keep      5
-            roll_keep_for  168h    # one week
-        }
-        format json
-        level  INFO
-    }
+	# Global access log → file (must mount /var/log/caddy in Docker)
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 50MiB
+			roll_keep 5
+			roll_keep_for 168h # one week
+		}
+		format json
+		level INFO
+	}
 
-    # Global error log verbosity
-    debug
+	# Global error log verbosity
+	debug
 }
 
 (planka_common) {
-    # Security headers
-    header {
-        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-        X-Frame-Options        "DENY"
-        X-Content-Type-Options "nosniff"
-        X-XSS-Protection       "1; mode=block"
-        Referrer-Policy        "strict-origin-when-cross-origin"
-        Permissions-Policy     "geolocation=(), microphone=()"
-    }
+	# Security headers
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=()"
+	}
 
-    # Cap request bodies
-    request_body {
-        max_size 10MB
-    }
+	# Cap request bodies
+	request_body {
+		max_size 10MB
+	}
 }
 
 planka.{$DOMAIN} {
-    import planka_common
+	import planka_common
 
 	tls {
 		protocols tls1.2 tls1.3
-		curves    x25519 secp256r1
-        alpn      http/1.1 h2
-    }
+		curves x25519 secp256r1
+		alpn http/1.1 h2
+	}
 
-    # Serve a single static cover image for any /assets/cover-*.jpg
-    @cover path_regexp cover ^/assets/cover-[A-Za-z0-9-]+\.jpg$
-    handle @cover {
-        root   * /
-        rewrite * /customisation/cover.jpg
-        file_server
-    }
+	# Serve a single static cover image for any /assets/cover-*.jpg
+	@cover path_regexp cover ^/assets/cover-[A-Za-z0-9-]+\.jpg$
+	handle @cover {
+		root * /
+		rewrite * /customisation/cover.jpg
+		file_server
+	}
 
-    # Real-time (WS/SSE) upgrades should stay open forever
-    @ws {
-        header Connection *Upgrade*
-        header Upgrade    websocket
-    }
-    handle @ws {
-        reverse_proxy planka:1337 {
-            # disable forced stream timeout (default is none)
-            stream_timeout     0
-            stream_close_delay 0
-        }
-    }
+	# Real-time (WS/SSE) upgrades should stay open forever
+	@ws {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	handle @ws {
+		reverse_proxy planka:1337 {
+			# disable forced stream timeout (default is none)
+			stream_timeout 0
+			stream_close_delay 0
+		}
+	}
 
-    # Everything else → your API/static backend
-    handle {
-        reverse_proxy planka:1337 {
-            transport http {
-                dial_timeout            3s
-                response_header_timeout 15s
-                read_timeout            15s
-                write_timeout           15s
-            }
-        }
-    }
+	# Everything else → your API/static backend
+	handle {
+		reverse_proxy planka:1337 {
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 15s
+				read_timeout 15s
+				write_timeout 15s
+			}
+		}
+	}
 }
