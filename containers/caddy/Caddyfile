@@ -28,14 +28,6 @@
         Permissions-Policy     "geolocation=(), microphone=()"
     }
 
-    # Basic rate-limit
-    @limited path /*
-    rate_limit @limited {
-        zone    default
-        burst   5
-        rate    2r/s
-    }
-
     # Cap request bodies
     request_body {
         max_size 10MB
