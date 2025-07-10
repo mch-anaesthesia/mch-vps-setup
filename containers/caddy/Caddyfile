@@ -38,8 +38,8 @@ planka.{$DOMAIN} {
     import planka_common
 
 	tls {
-        protocols tls1.3 tls1.2
-        curves    x25519 p256
+		protocols tls1.2 tls1.3
+		curves    x25519 secp256r1
         alpn      http/1.1 h2
     }
 
