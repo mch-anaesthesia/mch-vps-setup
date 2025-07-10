@@ -18,7 +18,7 @@ services:
     expose:  # Docker network only visibility
       - "1337"
     environment:
-      - BASE_URL=${BASE_URL}
+      - BASE_URL=${PLANKA_BASE_URL}
       - DATABASE_URL=postgresql://postgres@postgres/planka
 
       # Optionally store the database password in secrets:
