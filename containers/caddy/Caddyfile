@@ -34,46 +34,48 @@
 planka.{$DOMAIN} {
 	import planka_common
 
-	log {
-		output stdout # streams each HTTP request to docker logs
-		output file /var/log/caddy/access.log {
-			roll_size 50MiB
-			roll_keep 5
-			roll_keep_for 168h
+	route {
+		log {
+			output stdout # streams each HTTP request to docker logs
+			output file /var/log/caddy/access.log {
+				roll_size 50MiB
+				roll_keep 5
+				roll_keep_for 168h
+			}
+			format console # shows METHOD, URI, STATUS, SIZE, etc.
+			level INFO
 		}
-		format console # shows METHOD, URI, STATUS, SIZE, etc.
-		level INFO
-	}
 
-	# Serve a single static cover image for any /assets/cover-*.jpg
-	@cover path_regexp cover ^/assets/cover-[A-Za-z0-9-]+\.jpg$
-	handle @cover {
-		root * /
-		rewrite * /customisation/cover.jpg
-		file_server
-	}
-
-	# Real-time (WS/SSE) upgrades should stay open forever
-	@ws {
-		header Connection *Upgrade*
-		header Upgrade websocket
-	}
-	handle @ws {
-		reverse_proxy planka:1337 {
-			# disable forced stream timeout (default is none)
-			stream_timeout 0
-			stream_close_delay 0
+		# Serve a single static cover image for any /assets/cover-*.jpg
+		@cover path_regexp cover ^/assets/cover-[A-Za-z0-9-]+\.jpg$
+		handle @cover {
+			root * /
+			rewrite * /customisation/cover.jpg
+			file_server
 		}
-	}
 
-	# Everything else → your API/static backend
-	handle {
-		reverse_proxy planka:1337 {
-			transport http {
-				dial_timeout 3s
-				response_header_timeout 15s
-				read_timeout 15s
-				write_timeout 15s
+		# Real-time (WS/SSE) upgrades should stay open forever
+		@ws {
+			header Connection *Upgrade*
+			header Upgrade websocket
+		}
+		handle @ws {
+			reverse_proxy planka:1337 {
+				# disable forced stream timeout (default is none)
+				stream_timeout 0
+				stream_close_delay 0
+			}
+		}
+
+		# Everything else → your API/static backend
+		handle {
+			reverse_proxy planka:1337 {
+				transport http {
+					dial_timeout 3s
+					response_header_timeout 15s
+					read_timeout 15s
+					write_timeout 15s
+				}
 			}
 		}
 	}
