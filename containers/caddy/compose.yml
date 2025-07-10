@@ -15,7 +15,9 @@ services:
       - ./customisation:/customisation:ro
       - caddy_data:/data
       - caddy_config:/config
+      - caddy_logs:/var/log/caddy
     restart: unless-stopped
 volumes:
   caddy_data:
   caddy_config:
+  caddy_logs:

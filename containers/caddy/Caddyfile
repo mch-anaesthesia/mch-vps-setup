@@ -1,18 +1,89 @@
 {
-	email {$CADDY_EMAIL}
+    # Global options
+    email   {$CADDY_EMAIL}
+
+    # Redirect all HTTP → HTTPS
+    auto_https on
+
+    # Only TLS 1.2+ and safe curves
+    tls {
+        protocols tls1.3 tls1.2
+        curves    x25519 p256
+        alpn      http/1.1 h2
+    }
+
+    # Global access log → file (must mount /var/log/caddy in Docker)
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size      50MiB
+            roll_keep      5
+            roll_keep_for  168h    # one week
+        }
+        format json
+        level  INFO
+    }
+
+    # Global error log verbosity
+    debug
+}
+
+(planka_common) {
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Frame-Options        "DENY"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection       "1; mode=block"
+        Referrer-Policy        "strict-origin-when-cross-origin"
+        Permissions-Policy     "geolocation=(), microphone=()"
+    }
+
+    # Basic rate-limit
+    @limited path /*
+    rate_limit @limited {
+        zone    default
+        burst   5
+        rate    2r/s
+    }
+
+    # Cap request bodies
+    request_body {
+        max_size 10MB
+    }
 }
 
 planka.{$DOMAIN} {
-	# 1) Match requests for /assets/cover-<hash>.jpg
+    import planka_common
+
+    # Serve a single static cover image for any /assets/cover-*.jpg
     @cover path_regexp cover ^/assets/cover-[A-Za-z0-9-]+\.jpg$
+    handle @cover {
+        root   * /
+        rewrite * /customisation/cover.jpg
+        file_server
+    }
 
-	# 2) When matched, rewrite to our local file and serve it directly
-	handle @cover {
-		root * /
-		rewrite * /customisation/cover.jpg
-		file_server
-	}
+    # Real-time (WS/SSE) upgrades should stay open forever
+    @ws {
+        header Connection *Upgrade*
+        header Upgrade    websocket
+    }
+    handle @ws {
+        reverse_proxy planka:1337 {
+            transport http {
+                idle_timeout 0
+            }
+        }
+    }
 
-	# 3) Other requests go to Planka
-	reverse_proxy planka:1337
+    # Everything else → your API/static backend
+    handle {
+        reverse_proxy planka:1337 {
+            transport http {
+                read_timeout  15s
+                write_timeout 15s
+                idle_timeout  60s
+            }
+        }
+    }
 }
