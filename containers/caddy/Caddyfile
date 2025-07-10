@@ -5,6 +5,8 @@
 	# Global access log → file (must mount /var/log/caddy in Docker)
 	log {
 		output file /var/log/caddy/caddy.log
+		output stderr
+        level ERROR      # or INFO, as you prefer
 	}
 }
 
@@ -31,6 +33,8 @@ planka.{$DOMAIN} {
 	log {
 		output stdout # streams each HTTP request to docker logs
 		output file /var/log/caddy/access.log
+		format console
+        level  INFO
 	}
 
 	# Serve a single static cover image for any /assets/cover-*.jpg
