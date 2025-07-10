@@ -2,13 +2,6 @@
     # Global options
     email   {$CADDY_EMAIL}
 
-    # Only TLS 1.2+ and safe curves
-    tls {
-        protocols tls1.3 tls1.2
-        curves    x25519 p256
-        alpn      http/1.1 h2
-    }
-
     # Global access log → file (must mount /var/log/caddy in Docker)
     log {
         output file /var/log/caddy/access.log {
@@ -51,6 +44,12 @@
 
 planka.{$DOMAIN} {
     import planka_common
+
+	tls {
+        protocols tls1.3 tls1.2
+        curves    x25519 p256
+        alpn      http/1.1 h2
+    }
 
     # Serve a single static cover image for any /assets/cover-*.jpg
     @cover path_regexp cover ^/assets/cover-[A-Za-z0-9-]+\.jpg$
