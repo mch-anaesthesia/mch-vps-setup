@@ -58,9 +58,9 @@ planka.{$DOMAIN} {
     }
     handle @ws {
         reverse_proxy planka:1337 {
-            transport http {
-                idle_timeout 0
-            }
+            # disable forced stream timeout (default is none)
+            stream_timeout     0
+            stream_close_delay 0
         }
     }
 
@@ -68,9 +68,10 @@ planka.{$DOMAIN} {
     handle {
         reverse_proxy planka:1337 {
             transport http {
-                read_timeout  15s
-                write_timeout 15s
-                idle_timeout  60s
+                dial_timeout            3s
+                response_header_timeout 15s
+                read_timeout            15s
+                write_timeout           15s
             }
         }
     }
