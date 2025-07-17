@@ -90,7 +90,7 @@
 
 # Temporarily redirect base domain
 {$DOMAIN} {
-	redir planka.{$DOMAIN} temporary
+	redir https://planka.{$DOMAIN} temporary
 }
 
 planka.{$DOMAIN} {
