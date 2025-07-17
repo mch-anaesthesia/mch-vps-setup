@@ -87,6 +87,12 @@
 # ----------------------
 # 3) Bind to hostname
 # ----------------------
+
+# Temporarily redirect base domain
+{$DOMAIN} {
+	redir planka.{$DOMAIN} temporary
+}
+
 planka.{$DOMAIN} {
 	import planka_site
 }
