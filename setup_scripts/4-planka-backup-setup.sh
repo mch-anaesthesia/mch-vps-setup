@@ -67,13 +67,27 @@ if ! command -v restic >/dev/null; then
   sudo apt-get install -y restic
 fi
 
-# 5) Initialize Restic repository if not already
+# 5) Verify Restic repository (safe; no auto-init)
 echo "[+] Verifying Restic repo"
-if restic cat config >/dev/null 2>&1; then
+if B2_ACCOUNT_ID="$B2_ACCOUNT_ID" \
+   B2_ACCOUNT_KEY="$B2_ACCOUNT_KEY" \
+   RESTIC_REPOSITORY="$RESTIC_REPOSITORY" \
+   RESTIC_PASSWORD="$RESTIC_PASSWORD" \
+   restic --no-lock cat config >/dev/null 2>&1; then
   echo "[+] Repo exists; skipping init"
 else
-  echo "[+] No repo detected; initializing…"
-  restic init
+  if [[ "${1:-}" == "--init" ]]; then
+    echo "[!] Could not read repo config; initializing explicitly (--init provided)…"
+    B2_ACCOUNT_ID="$B2_ACCOUNT_ID" \
+    B2_ACCOUNT_KEY="$B2_ACCOUNT_KEY" \
+    RESTIC_REPOSITORY="$RESTIC_REPOSITORY" \
+    RESTIC_PASSWORD="$RESTIC_PASSWORD" \
+    restic init
+  else
+    echo "✗ ERROR: Cannot access restic repo (network/creds/throttle?)."
+    echo "         Not initializing automatically. Re-run this installer with --init to create a new repo."
+    exit 1
+  fi
 fi
 
 # 6) Generate backup script
