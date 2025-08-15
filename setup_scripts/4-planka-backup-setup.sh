@@ -117,7 +117,7 @@ echo "[+] Restic backup (contents only)"
 echo "[+] Pruning snapshots"
 restic forget --prune \
   --tag planka \
-  --group-by host,paths \
+  --group-by host \
   --keep-hourly "$KEEP_HOURLY" \
   --keep-daily  "$KEEP_DAILY" \
   --keep-weekly "$KEEP_WEEKLY" \
