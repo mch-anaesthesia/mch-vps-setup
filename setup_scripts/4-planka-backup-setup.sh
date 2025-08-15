@@ -68,12 +68,13 @@ if ! command -v restic >/dev/null; then
 fi
 
 # 5) Initialize Restic repository if not already
-echo "[+] Initializing Restic (if needed)"
-B2_ACCOUNT_ID="${B2_ACCOUNT_ID}" \
-B2_ACCOUNT_KEY="${B2_ACCOUNT_KEY}" \
-RESTIC_REPOSITORY="${RESTIC_REPOSITORY}" \
-RESTIC_PASSWORD="${RESTIC_PASSWORD}" \
-restic snapshots >/dev/null 2>&1 || restic init
+echo "[+] Verifying Restic repo"
+if restic cat config >/dev/null 2>&1; then
+  echo "[+] Repo exists; skipping init"
+else
+  echo "[+] No repo detected; initializing…"
+  restic init
+fi
 
 # 6) Generate backup script
 echo "[+] Writing backup script to ${BACKUP_SCRIPT}"
@@ -117,7 +118,7 @@ cleanup(){ rm -rf "${tmpdir}"; }
 trap cleanup EXIT
 
 echo "[+] Dumping Postgres"
-docker exec -t "${POSTGRES_CTN}" pg_dumpall -c -U postgres > "${tmpdir}/postgres.sql"
+docker exec "${POSTGRES_CTN}" pg_dumpall -c -U postgres > "${tmpdir}/postgres.sql"
 
 echo "[+] Copying assets"
 for vol in public/favicons public/user-avatars public/background-images private/attachments; do
