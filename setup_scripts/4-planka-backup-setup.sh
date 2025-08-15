@@ -117,10 +117,11 @@ echo "[+] Restic backup (contents only)"
 echo "[+] Pruning snapshots"
 restic forget --prune \
   --tag planka \
-  --keep-hourly "${KEEP_HOURLY}" \
-  --keep-daily "${KEEP_DAILY}" \
-  --keep-weekly "${KEEP_WEEKLY}" \
-  --keep-monthly "${KEEP_MONTHLY}"
+  --group-by host,paths \
+  --keep-hourly "$KEEP_HOURLY" \
+  --keep-daily  "$KEEP_DAILY" \
+  --keep-weekly "$KEEP_WEEKLY" \
+  --keep-monthly "$KEEP_MONTHLY"
 
 echo "[+] Cleaning up"
 rm -rf "${tmpdir}"
