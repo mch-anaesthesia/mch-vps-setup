@@ -111,7 +111,7 @@ done
 echo "[+] Restic backup (contents only)"
 (
   cd "${tmpdir}"
-  restic backup . --tag planka --tag "${ts}"
+  restic backup . --tag planka
 )
 
 echo "[+] Pruning snapshots"

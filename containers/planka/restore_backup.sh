@@ -2,9 +2,7 @@
 set -euo pipefail
 
 # ── Planka Restore Script (interactive) ──────────────────────────
-# Usage:
-#   ./planka-restore.sh [snapshot-ID]
-# If no ID given, lists available snapshots tagged "planka" and prompts user to pick.
+# Always lists available snapshots tagged "planka" and prompts to pick one.
 
 # Configuration
 SYSTEM_ENV_FILE="/etc/planka-backup.env"
@@ -35,24 +33,41 @@ if ! command -v restic >/dev/null; then
   exit 1
 fi
 
-# If no snapshot given, list and prompt
-SNAP_ID="${1:-}"
-if [[ -z "$SNAP_ID" ]]; then
-  echo "Available snapshots tagged '$RESTIC_TAG':"
+# Always list and prompt
+SNAP_ID=""
+if command -v jq >/dev/null; then
+  echo -e "IDX\tID\t\t\tTIME (UTC)\t\tHOST"
+  restic snapshots --tag "$RESTIC_TAG" --no-lock --json \
+    | jq -r 'to_entries[] | "\(.key)\t\(.value.short_id)\t\(.value.time)\t\(.value.hostname)"'
   echo
-  restic snapshots --tag "$RESTIC_TAG" --no-lock \
-    | tail -n +2 \
-    | awk '{ printf "%s\t%s %s %s %s\n", $1, $2, $3, $4, $5 }'
-  echo
-  read -erp "Enter the snapshot ID to restore: " SNAP_ID
-  if [[ -z "$SNAP_ID" ]]; then
-    echo "✗ ERROR: No snapshot ID entered. Aborting." >&2
+  read -erp "Enter IDX or snapshot ID to restore: " pick
+  if [[ -z "$pick" ]]; then
+    echo "✗ ERROR: No selection entered. Aborting." >&2
     exit 1
   fi
+  if [[ "$pick" =~ ^[0-9]+$ ]]; then
+    SNAP_ID="$(restic snapshots --tag "$RESTIC_TAG" --no-lock --json | jq -r ".[$pick].short_id")"
+  else
+    SNAP_ID="$pick"
+  fi
+else
+  echo "Available snapshots tagged '$RESTIC_TAG':"
+  echo
+  # Fallback to human table (format may vary between versions)
+  restic snapshots --tag "$RESTIC_TAG" --no-lock
+  echo
+  read -erp "Enter the snapshot ID to restore: " SNAP_ID
+fi
+
+if [[ -z "$SNAP_ID" ]]; then
+  echo "✗ ERROR: No snapshot ID entered. Aborting." >&2
+  exit 1
 fi
 
 echo "[+] Restoring snapshot: $SNAP_ID"
-TMPDIR="$(mktemp -d /tmp/planka-restore-${SNAP_ID}.XXXX)"
+TMPDIR="$(mktemp -d "/tmp/planka-restore-${SNAP_ID}.XXXX")"
+cleanup() { rm -rf "$TMPDIR"; }
+trap cleanup EXIT
 
 # Restore the backup
 restic restore "$SNAP_ID" --target "$TMPDIR"
@@ -66,6 +81,12 @@ else
     echo "✗ ERROR: Restored data directory not found under $TMPDIR" >&2
     exit 1
   fi
+fi
+
+# Sanity check
+if [[ ! -f "$RESTORE_ROOT/postgres.sql" ]]; then
+  echo "✗ ERROR: postgres.sql not found in restored set." >&2
+  exit 1
 fi
 
 # Restore Postgres database
@@ -85,9 +106,5 @@ for vol in public/favicons public/user-avatars public/background-images private/
     -v "$RESTORE_ROOT":/backup ubuntu \
     bash -c "rm -rf /app/$vol/* && cp -a /backup/$vol/. /app/$vol/"
 done
-
-# Cleanup temporary files
-echo "[+] Cleaning up"
-rm -rf "$TMPDIR"
 
 echo "[✓] Restore complete for snapshot $SNAP_ID"
