@@ -163,7 +163,7 @@ fi
 
 # Restore Postgres database (stop on first SQL error)
 echo "[+] Importing database into container '$POSTGRES_CTN'"
-docker exec -i "$POSTGRES_CTN" psql --set=ON_ERROR_STOP=on -U postgres < "$RESTORE_ROOT/postgres.sql"
+docker exec -i "$POSTGRES_CTN" psql -U postgres < "$RESTORE_ROOT/postgres.sql"
 
 # Restore Planka asset volumes
 echo "[+] Restoring Planka asset volumes into '$PLANKA_CTN'"
