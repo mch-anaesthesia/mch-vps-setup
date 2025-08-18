@@ -161,7 +161,7 @@ if [[ "$ASSUME_YES" -ne 1 ]]; then
   esac
 fi
 
-# Restore Postgres database (stop on first SQL error)
+# Restore Postgres database
 echo "[+] Importing database into container '$POSTGRES_CTN'"
 docker exec -i "$POSTGRES_CTN" psql -U postgres < "$RESTORE_ROOT/postgres.sql"
 
@@ -169,10 +169,14 @@ docker exec -i "$POSTGRES_CTN" psql -U postgres < "$RESTORE_ROOT/postgres.sql"
 echo "[+] Restoring Planka asset volumes into '$PLANKA_CTN'"
 for vol in public/favicons public/user-avatars public/background-images private/attachments; do
   echo "    • $vol"
-  docker run --rm \
-    --volumes-from "$PLANKA_CTN" \
-    -v "$RESTORE_ROOT":/backup ubuntu \
-    bash -c "rm -rf /app/$vol/* && cp -a /backup/$vol/. /app/$vol/"
+  if [[ -d "$RESTORE_ROOT/$vol" ]]; then
+    docker run --rm \
+      --volumes-from "$PLANKA_CTN" \
+      -v "$RESTORE_ROOT":/backup ubuntu \
+      bash -c "rm -rf /app/$vol/* && cp -a /backup/$vol/. /app/$vol/"
+  else
+    echo "      (skipped: not present in snapshot)"
+  fi
 done
 
 # Start Planka back up

@@ -8,7 +8,10 @@ SCRIPTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ENV_FILE="${SCRIPTDIR}/../.env"
 SYSTEM_ENV_FILE="/etc/planka-backup.env"
 BACKUP_SCRIPT="/usr/local/bin/planka-backup.sh"
+MAINT_SCRIPT="/usr/local/bin/planka-backup-maint.sh"
 CRON_FILE="/etc/cron.d/planka-backup"
+WORK_BASE="/var/lib/planka-backup"
+WORK_DIR="${WORK_BASE}/work"   # stable path so restic can pick a parent
 
 # Docker container names
 PLANKA_CTN="planka"
@@ -90,6 +93,10 @@ else
   fi
 fi
 
+echo "[+] Ensuring working directory exists"
+sudo mkdir -p "${WORK_DIR}"
+sudo chmod 700 "${WORK_BASE}" "${WORK_DIR}"
+
 # 6) Generate backup script
 echo "[+] Writing backup script to ${BACKUP_SCRIPT}"
 sudo tee "${BACKUP_SCRIPT}" >/dev/null <<'EOF'
@@ -104,6 +111,8 @@ umask 077
 # Dumps Postgres DB and Planka assets, stores them in B2 via Restic
 
 SYSTEM_ENV_FILE="/etc/planka-backup.env"
+WORK_DIR="/var/lib/planka-backup/work"
+
 # Load credentials
 set -o allexport
 source "${SYSTEM_ENV_FILE}"
@@ -125,27 +134,29 @@ if ! docker ps --format '{{.Names}}' | grep -qx "${PLANKA_CTN}"; then
   echo "✗ ERROR: container ${PLANKA_CTN} not running"; exit 1
 fi
 
-# Timestamp & workspace
+# Stable workspace so Restic can detect a parent snapshot
 ts="$(date --utc +%FT%H-%M-%SZ)"
-tmpdir="$(mktemp -d /tmp/planka-backup-${ts}.XXXX)"
-cleanup(){ rm -rf "${tmpdir}"; }
-trap cleanup EXIT
+echo "[+] Preparing workspace at ${WORK_DIR} (${ts})"
+mkdir -p "${WORK_DIR}"
+# wipe previous run's content only
+rm -rf "${WORK_DIR:?}/"* 2>/dev/null || true
 
 echo "[+] Dumping Postgres"
-docker exec "${POSTGRES_CTN}" pg_dumpall -c -U postgres > "${tmpdir}/postgres.sql"
+docker exec "${POSTGRES_CTN}" pg_dumpall -c --if-exists -U postgres > "${WORK_DIR}/postgres.sql"
 
 echo "[+] Copying assets"
 for vol in public/favicons public/user-avatars public/background-images private/attachments; do
-  mkdir -p "${tmpdir}/$(dirname "${vol}")"
-  docker run --rm --volumes-from "${PLANKA_CTN}" -v "${tmpdir}":/backup ubuntu \
+  mkdir -p "${WORK_DIR}/$(dirname "${vol}")"
+  docker run --rm --volumes-from "${PLANKA_CTN}" -v "${WORK_DIR}":/backup ubuntu \
     cp -a "/app/${vol}" "/backup/${vol}"
 done
 
 echo "[+] Restic backup (contents only)"
-(
-  cd "${tmpdir}"
-  nice -n 10 ionice -c2 -n7 restic backup . --tag planka
-)
+nice -n 10 ionice -c2 -n7 restic backup "${WORK_DIR}" --tag planka
+
+# Scrub workspace contents after backup (keep directory to preserve path)
+shred -u -z "${WORK_DIR}/postgres.sql" 2>/dev/null || rm -f "${WORK_DIR}/postgres.sql"
+find "${WORK_DIR}" -mindepth 1 -type f -name '.DS_Store' -delete || true
 
 echo "[✓] Backup complete: ${ts}"
 EOF
@@ -154,7 +165,6 @@ sudo chmod +x "${BACKUP_SCRIPT}"
 echo "[+] Generated backup script"
 
 # 6b) Generate maintenance script (prune + checks, on schedules)
-MAINT_SCRIPT="/usr/local/bin/planka-backup-maint.sh"
 echo "[+] Writing maintenance script to ${MAINT_SCRIPT}"
 sudo tee "${MAINT_SCRIPT}" >/dev/null <<'EOF'
 #!/usr/bin/env bash
