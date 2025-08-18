@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eEuo pipefail
 
 # Harden environment (works fine for interactive too)
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 umask 077
 
 # ── Planka Restore Script (interactive) ──────────────────────────
-# Always lists available snapshots tagged "planka" and prompts to pick one.
 # Flags:
 #   --dry-run   : show what would be restored, do not modify anything
 #   --yes       : skip final confirmation (ignored for --dry-run)
 
-# Configuration
 SYSTEM_ENV_FILE="/etc/planka-backup.env"
 POSTGRES_CTN="postgres-planka"
 PLANKA_CTN="planka"
@@ -24,45 +22,32 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
     --yes|-y)  ASSUME_YES=1; shift ;;
-    *)         # ignore stray args (we always prompt for snapshot interactively)
-               shift ;;
+    *)         shift ;;
   esac
 done
 
 # Load credentials
-if [[ ! -r "$SYSTEM_ENV_FILE" ]]; then
-  echo "✗ ERROR: Credentials file $SYSTEM_ENV_FILE not found or not readable." >&2
-  exit 1
-fi
-set -o allexport
-source "$SYSTEM_ENV_FILE"
-set +o allexport
+[[ -r "$SYSTEM_ENV_FILE" ]] || { echo "✗ ERROR: Credentials file $SYSTEM_ENV_FILE not found or not readable." >&2; exit 1; }
+set -o allexport; source "$SYSTEM_ENV_FILE"; set +o allexport
 
 # Validate required variables
 for var in B2_ACCOUNT_ID B2_ACCOUNT_KEY RESTIC_REPOSITORY RESTIC_PASSWORD; do
-  if [[ -z "${!var:-}" ]]; then
-    echo "✗ ERROR: \$$var is not set in $SYSTEM_ENV_FILE" >&2
-    exit 1
-  fi
+  [[ -n "${!var:-}" ]] || { echo "✗ ERROR: \$$var is not set in $SYSTEM_ENV_FILE" >&2; exit 1; }
 done
 
 # Ensure restic is installed
 command -v restic >/dev/null || { echo "✗ ERROR: restic not installed." >&2; exit 1; }
 
-# single-instance lock (still useful for dry-run to avoid overlapping prompts)
+# single-instance lock
 exec 9>/var/lock/planka-restore.lock
 flock -n 9 || { echo "Another restore is running; exiting."; exit 0; }
 
-# Ensure containers exist (Planka may be stopped; Postgres must be running for *real* restore)
-if ! docker ps -a --format '{{.Names}}' | grep -qx "$PLANKA_CTN"; then
-  echo "✗ ERROR: Planka container '$PLANKA_CTN' does not exist." >&2
-  exit 1
-fi
+# Ensure containers exist/running
+docker ps -a --format '{{.Names}}' | grep -qx "$PLANKA_CTN" \
+  || { echo "✗ ERROR: Planka container '$PLANKA_CTN' does not exist." >&2; exit 1; }
 if [[ "$DRY_RUN" -eq 0 ]]; then
-  if ! docker ps --format '{{.Names}}' | grep -qx "$POSTGRES_CTN"; then
-    echo "✗ ERROR: Postgres container '$POSTGRES_CTN' is not running." >&2
-    exit 1
-  fi
+  docker ps --format '{{.Names}}' | grep -qx "$POSTGRES_CTN" \
+    || { echo "✗ ERROR: Postgres container '$POSTGRES_CTN' is not running." >&2; exit 1; }
 fi
 
 # Always list and prompt
@@ -90,14 +75,12 @@ else
   echo
   read -erp "Enter the snapshot ID to restore: " SNAP_ID
 fi
-
 [[ -n "$SNAP_ID" ]] || { echo "✗ ERROR: No snapshot ID entered. Aborting." >&2; exit 1; }
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo
   echo "──────── DRY RUN ────────"
   echo "[i] Snapshot to inspect: $SNAP_ID"
-  # Show metadata for the chosen snapshot (host, time, tags)
   if command -v jq >/dev/null; then
     restic snapshots --no-lock --json \
       | jq -r --arg id "$SNAP_ID" '
@@ -106,22 +89,12 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   else
     restic snapshots | awk -v id="$SNAP_ID" '$1==id{print;exit}'
   fi
-
   echo
   echo "[i] Files in the snapshot (top 200 paths):"
-  # List without restoring data
   restic ls "$SNAP_ID" | head -n 200 || true
   echo "… (use 'restic ls $SNAP_ID' to see full list)"
-
   echo
-  echo "[i] What WOULD happen:"
-  echo "  • Stop container: ${PLANKA_CTN} (if running)"
-  echo "  • Restore files from snapshot into a temp dir"
-  echo "  • Import Postgres via: docker exec -i ${POSTGRES_CTN} psql --set=ON_ERROR_STOP=on -U postgres < postgres.sql"
-  echo "  • Replace Planka asset dirs inside ${PLANKA_CTN}:"
-  echo "      public/favicons, public/user-avatars, public/background-images, private/attachments"
-  echo "  • Start container: ${PLANKA_CTN}"
-  echo
+  echo "[i] Would: stop Planka → restore to temp → import DB → copy assets → (re)start Planka"
   echo "[✓] Dry run complete — no changes made."
   exit 0
 fi
@@ -131,25 +104,37 @@ TMPDIR="$(mktemp -d "/tmp/planka-restore-${SNAP_ID}.XXXX")"
 cleanup(){ rm -rf "$TMPDIR"; }
 trap cleanup EXIT
 
-# Stop Planka to avoid writes during restore (safe even if already stopped)
+# Record whether Planka was running; stop it to prevent writes
+WAS_RUNNING=0
 if docker ps --format '{{.Names}}' | grep -qx "$PLANKA_CTN"; then
+  WAS_RUNNING=1
   echo "[+] Stopping Planka container '$PLANKA_CTN'"
   docker stop "$PLANKA_CTN" >/dev/null
 fi
 
+# Early ERR trap: before safety dump exists, just restore service state if we fail
+early_fail() {
+  echo "[!] Restore failed before DB safety dump. Restoring service state…"
+  if [[ $WAS_RUNNING -eq 1 ]]; then
+    docker start "$PLANKA_CTN" >/dev/null || true
+    echo "[i] Planka restarted."
+  fi
+}
+trap early_fail ERR
+
 # Restore files into TMPDIR
 nice -n 10 ionice -c2 -n7 restic restore "$SNAP_ID" --target "$TMPDIR"
 
-# Determine actual restore root (restic nests files under TMPDIR/<original-tempdir>)
-if [[ -f "$TMPDIR/postgres.sql" ]]; then
-  RESTORE_ROOT="$TMPDIR"
+# Find where postgres.sql actually landed (handles deep restored paths)
+psql_path="$(find "$TMPDIR" -type f -name postgres.sql -print -quit || true)"
+if [[ -n "$psql_path" ]]; then
+  RESTORE_ROOT="$(dirname "$psql_path")"
 else
-  RESTORE_ROOT="$(find "$TMPDIR" -mindepth 1 -maxdepth 1 -type d | head -n1)"
-  [[ -n "$RESTORE_ROOT" ]] || { echo "✗ ERROR: Restored data directory not found under $TMPDIR" >&2; exit 1; }
+  echo "✗ ERROR: postgres.sql not found anywhere under $TMPDIR" >&2
+  echo "Restored tree preview (depth 4):" >&2
+  find "$TMPDIR" -maxdepth 4 -type d -print | sed 's/^/  /' >&2
+  exit 1
 fi
-
-# Sanity check
-[[ -f "$RESTORE_ROOT/postgres.sql" ]] || { echo "✗ ERROR: postgres.sql not found in restored set." >&2; exit 1; }
 
 # Final confirmation (can be skipped with --yes)
 if [[ "$ASSUME_YES" -ne 1 ]]; then
@@ -157,15 +142,42 @@ if [[ "$ASSUME_YES" -ne 1 ]]; then
   read -rp "About to import DB and overwrite asset directories. Continue? [y/N] " yn
   case "${yn:-}" in
     y|Y|yes|YES) ;;
-    *) echo "Aborted."; exit 1 ;;
+    *)
+      echo "Aborted."
+      if [[ $WAS_RUNNING -eq 1 ]]; then docker start "$PLANKA_CTN" >/dev/null; fi
+      exit 1 ;;
   esac
 fi
+
+# Take safety dump (commit point)
+SAFE_DUMP="$TMPDIR/pre-restore-current-db.sql"
+echo "[+] Taking safety dump of current DB to $SAFE_DUMP"
+docker exec -i "$POSTGRES_CTN" pg_dumpall -U postgres > "$SAFE_DUMP"
+
+# Replace ERR trap with rollback that uses the safety dump
+rollback() {
+  echo "[!] Restore failed after safety dump. Rolling database back…"
+  if [[ -s "$SAFE_DUMP" ]]; then
+    if docker exec -i "$POSTGRES_CTN" psql -U postgres < "$SAFE_DUMP"; then
+      echo "[✓] Database rolled back from safety dump."
+    else
+      echo "[!] Database rollback failed; manual intervention needed."
+    fi
+  else
+    echo "[!] Safety dump missing/empty; cannot roll back DB."
+  fi
+  if [[ $WAS_RUNNING -eq 1 ]]; then
+    docker start "$PLANKA_CTN" >/dev/null || true
+  fi
+  exit 1
+}
+trap rollback ERR
 
 # Restore Postgres database
 echo "[+] Importing database into container '$POSTGRES_CTN'"
 docker exec -i "$POSTGRES_CTN" psql -U postgres < "$RESTORE_ROOT/postgres.sql"
 
-# Restore Planka asset volumes
+# Restore Planka asset volumes (only after DB import succeeded)
 echo "[+] Restoring Planka asset volumes into '$PLANKA_CTN'"
 for vol in public/favicons public/user-avatars public/background-images private/attachments; do
   echo "    • $vol"
@@ -179,8 +191,11 @@ for vol in public/favicons public/user-avatars public/background-images private/
   fi
 done
 
-# Start Planka back up
-echo "[+] Starting Planka container '$PLANKA_CTN'"
-docker start "$PLANKA_CTN" >/dev/null
+# Success: clear ERR trap and restore original service state
+trap - ERR
+if [[ $WAS_RUNNING -eq 1 ]]; then
+  echo "[+] Starting Planka container '$PLANKA_CTN'"
+  docker start "$PLANKA_CTN" >/dev/null
+fi
 
 echo "[✓] Restore complete for snapshot $SNAP_ID"
